@@ -69,20 +69,40 @@ cam.onchange = function () {
   img.src = URL.createObjectURL(f); cam.value = '';
 };
 function fail(text) { msg.className = 'bad'; msg.textContent = text; send.disabled = false; }
+function done(n) {
+  msg.className = 'ok'; msg.textContent = 'Saved ' + n + (n > 1 ? ' photos' : ' photo') + '. Thanks!';
+  files = []; rid = ''; document.getElementById('thumbs').innerHTML = ''; document.getElementById('note').value = '';
+  snap.textContent = 'Take photo';
+}
+// Ask the script whether this receipt arrived. Done with a script tag because iPhones
+// cannot always read the reply to the upload itself.
+function check(id, triesLeft) {
+  var name = 'cb' + Date.now(), tag = document.createElement('script'), finished = false;
+  function again() {
+    if (finished) return; finished = true;
+    delete window[name]; tag.remove();
+    if (triesLeft > 1) setTimeout(function () { check(id, triesLeft - 1); }, 2500);
+    else fail('Sent, but I could not confirm it arrived. Tap Send again - it will not save twice.');
+  }
+  window[name] = function (out) {
+    if (finished) return;
+    if (out && out.saved > 0) { finished = true; delete window[name]; tag.remove(); done(out.saved); }
+    else again();
+  };
+  tag.onerror = again;
+  setTimeout(again, 9000);
+  tag.src = ENDPOINT + '?check=' + encodeURIComponent(id) + '&callback=' + name;
+  document.body.appendChild(tag);
+}
 send.onclick = function () {
   if (!who) { msg.className = 'bad'; msg.textContent = 'Tap who you are first.'; return; }
   if (!paid) { msg.className = 'bad'; msg.textContent = 'Tap how it was paid.'; return; }
   send.disabled = true; msg.className = ''; msg.textContent = 'Sending...';
-  // Sent as plain text so the browser makes one simple request the script accepts.
-  fetch(ENDPOINT, { method: 'POST', body: JSON.stringify({ id: rid, who: who, paid: paid, note: document.getElementById('note').value, files: files }) })
-    .then(function (r) { return r.json(); })
-    .then(function (out) {
-      if (!out.ok) { fail('Not saved: ' + out.error + ' Try again.'); return; }
-      msg.className = 'ok'; msg.textContent = 'Saved ' + out.saved + (out.saved > 1 ? ' photos' : ' photo') + '. Thanks!';
-      files = []; rid = ''; document.getElementById('thumbs').innerHTML = ''; document.getElementById('note').value = '';
-      snap.textContent = 'Take photo';
-    })
-    .catch(function () { fail('Not saved - no connection. Your photo is still here; tap Send again.'); });
+  var id = rid;
+  // Plain-text body and no-cors: one simple request that every phone browser will send.
+  fetch(ENDPOINT, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ id: id, who: who, paid: paid, note: document.getElementById('note').value, files: files }) })
+    .then(function () { msg.textContent = 'Checking it arrived...'; check(id, 4); })
+    .catch(function () { msg.textContent = 'Checking it arrived...'; check(id, 2); });
 };
 </script>
 </body>
