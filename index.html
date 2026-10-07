@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Receipts">
+<title>Candid Receipts</title>
+<style>
+*{box-sizing:border-box}body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;padding:16px;background:#f6f3ee;color:#222}
+h1{font-size:22px;margin:4px 0 14px}label{display:block;font-weight:600;margin:14px 0 6px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.chip{flex:1;min-width:90px;padding:14px 8px;border:2px solid #c9c2b6;border-radius:12px;background:#fff;text-align:center;font-size:16px}
+.chip.on{border-color:#1f5f4a;background:#e3f1ec;font-weight:700}
+input[type=text]{width:100%;padding:14px;font-size:16px;border:2px solid #c9c2b6;border-radius:12px}
+button{width:100%;padding:18px;font-size:19px;font-weight:700;border:0;border-radius:14px;margin-top:16px}
+#snap{background:#1f5f4a;color:#fff}#send{background:#d9822b;color:#fff}#send:disabled{background:#bbb}
+#thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}#thumbs img{width:86px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #bbb}
+#msg{margin-top:16px;font-size:17px;min-height:24px}.ok{color:#1f5f4a;font-weight:700}.bad{color:#b3261e;font-weight:700}
+</style>
+</head>
+<body>
+<h1>Candid Receipts</h1>
+<label>Who?</label>
+<div class="row" id="who"><div class="chip">Louise</div><div class="chip">Bryan</div><div class="chip">Alley</div><div class="chip">Other</div></div>
+<label>Paid with</label>
+<div class="row" id="paid"><div class="chip">Company card</div><div class="chip">My own money</div><div class="chip">Cash from till</div></div>
+<label>What was it for? (optional)</label>
+<input type="text" id="note" maxlength="80" placeholder="e.g. hose clamps, Canadian Tire">
+<input type="file" id="cam" accept="image/*" capture="environment" style="display:none">
+<button id="snap">Take photo</button>
+<div id="thumbs"></div>
+<button id="send" disabled>Send</button>
+<div id="msg"></div>
+<script>
+// The Google script that files the photo in Drive > Receipts > Receipt Inbox.
+var ENDPOINT = 'https://script.google.com/macros/s/AKfycbxVgUnXTGYnMiEA0aLi_AD3fw_svtTg-R0cwW24wxJbElHQcBd8hEDKCVTvo5TjfztV/exec';
+var files = [], who = '', paid = '';
+function pick(id, key) {
+  var box = document.getElementById(id), saved = '';
+  try { saved = localStorage.getItem(key) || ''; } catch (e) {}
+  Array.prototype.forEach.call(box.children, function (c) {
+    if (c.textContent === saved) { c.classList.add('on'); if (id === 'who') who = saved; else paid = saved; }
+    c.onclick = function () {
+      Array.prototype.forEach.call(box.children, function (x) { x.classList.remove('on'); });
+      c.classList.add('on');
+      if (id === 'who') who = c.textContent; else paid = c.textContent;
+      try { localStorage.setItem(key, c.textContent); } catch (e) {}
+    };
+  });
+}
+pick('who', 'who'); pick('paid', 'paid');
+var cam = document.getElementById('cam'), msg = document.getElementById('msg'),
+    send = document.getElementById('send'), snap = document.getElementById('snap');
+snap.onclick = function () { cam.click(); };
+cam.onchange = function () {
+  var f = cam.files[0]; if (!f) return;
+  var img = new Image();
+  img.onload = function () {
+    var s = Math.min(1, 2000 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+    c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    var url = c.toDataURL('image/jpeg', 0.82);
+    files.push({ type: 'image/jpeg', data: url.split(',')[1] });
+    var t = new Image(); t.src = url; document.getElementById('thumbs').appendChild(t);
+    send.disabled = false; snap.textContent = 'Add another page'; msg.textContent = '';
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(f); cam.value = '';
+};
+function fail(text) { msg.className = 'bad'; msg.textContent = text; send.disabled = false; }
+send.onclick = function () {
+  if (!who) { msg.className = 'bad'; msg.textContent = 'Tap who you are first.'; return; }
+  if (!paid) { msg.className = 'bad'; msg.textContent = 'Tap how it was paid.'; return; }
+  send.disabled = true; msg.className = ''; msg.textContent = 'Sending...';
+  // Sent as plain text so the browser makes one simple request the script accepts.
+  fetch(ENDPOINT, { method: 'POST', body: JSON.stringify({ who: who, paid: paid, note: document.getElementById('note').value, files: files }) })
+    .then(function (r) { return r.json(); })
+    .then(function (out) {
+      if (!out.ok) { fail('Not saved: ' + out.error + ' Try again.'); return; }
+      msg.className = 'ok'; msg.textContent = 'Saved ' + out.saved + (out.saved > 1 ? ' photos' : ' photo') + '. Thanks!';
+      files = []; document.getElementById('thumbs').innerHTML = ''; document.getElementById('note').value = '';
+      snap.textContent = 'Take photo';
+    })
+    .catch(function () { fail('Not saved - no connection. Your photo is still here; tap Send again.'); });
+};
+</script>
+</body>
+</html>
