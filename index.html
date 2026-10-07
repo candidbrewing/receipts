@@ -34,7 +34,7 @@ button{width:100%;padding:18px;font-size:19px;font-weight:700;border:0;border-ra
 <script>
 // The Google script that files the photo in Drive > Receipts > Receipt Inbox.
 var ENDPOINT = 'https://script.google.com/macros/s/AKfycbxVgUnXTGYnMiEA0aLi_AD3fw_svtTg-R0cwW24wxJbElHQcBd8hEDKCVTvo5TjfztV/exec';
-var files = [], who = '', paid = '';
+var files = [], who = '', paid = '', rid = '';
 function pick(id, key) {
   var box = document.getElementById(id), saved = '';
   try { saved = localStorage.getItem(key) || ''; } catch (e) {}
@@ -60,6 +60,7 @@ cam.onchange = function () {
     c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     var url = c.toDataURL('image/jpeg', 0.82);
+    if (!files.length) rid = Date.now() + '-' + Math.random().toString(36).slice(2, 10);   // one id per receipt, so a resend isn't saved twice
     files.push({ type: 'image/jpeg', data: url.split(',')[1] });
     var t = new Image(); t.src = url; document.getElementById('thumbs').appendChild(t);
     send.disabled = false; snap.textContent = 'Add another page'; msg.textContent = '';
@@ -73,12 +74,12 @@ send.onclick = function () {
   if (!paid) { msg.className = 'bad'; msg.textContent = 'Tap how it was paid.'; return; }
   send.disabled = true; msg.className = ''; msg.textContent = 'Sending...';
   // Sent as plain text so the browser makes one simple request the script accepts.
-  fetch(ENDPOINT, { method: 'POST', body: JSON.stringify({ who: who, paid: paid, note: document.getElementById('note').value, files: files }) })
+  fetch(ENDPOINT, { method: 'POST', body: JSON.stringify({ id: rid, who: who, paid: paid, note: document.getElementById('note').value, files: files }) })
     .then(function (r) { return r.json(); })
     .then(function (out) {
       if (!out.ok) { fail('Not saved: ' + out.error + ' Try again.'); return; }
       msg.className = 'ok'; msg.textContent = 'Saved ' + out.saved + (out.saved > 1 ? ' photos' : ' photo') + '. Thanks!';
-      files = []; document.getElementById('thumbs').innerHTML = ''; document.getElementById('note').value = '';
+      files = []; rid = ''; document.getElementById('thumbs').innerHTML = ''; document.getElementById('note').value = '';
       snap.textContent = 'Take photo';
     })
     .catch(function () { fail('Not saved - no connection. Your photo is still here; tap Send again.'); });
